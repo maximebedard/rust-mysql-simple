@@ -624,6 +624,15 @@ impl ConnStream {
     }
 }
 
+impl io::Read for ConnStream {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        match self {
+            ConnStream::Plain(s) => s.read(buf),
+            ConnStream::Compressed(s) => s.read(buf),
+        }
+    }
+}
+
 /***
  *     .d8888b.
  *    d88P  Y88b
@@ -1524,39 +1533,22 @@ impl Conn {
         }
     }
 
-    pub fn start_binlog_sync(&mut self) -> MyResult<()> {
+    pub fn start_binlog_sync<T: io::Read>(&mut self) -> MyResult<T> {
         let pos = self._get_master_position()?;
-        self.start_binlog_sync2(pos)
+        self.start_binlog_sync2(pos)?;
+        Ok(self.stream.unwrap())
     }
 
     fn _get_master_position(&mut self) -> MyResult<Position> {
         self.first("show master status").and_then(|result| {
             let (file, position, _, _, _) : (String, u32, String, String, String) = from_row(result.unwrap());
-
             Ok(Position { pos: position, name: file, server_id: 1})
         })
     }
 
-    pub fn start_binlog_sync2(&mut self, pos: Position) -> MyResult<()> {
-
-        // TODO: prepare sync position https://github.com/siddontang/go-mysql/blob/c6ab05a85eb86dc51a27ceed6d2f366a32874a24/replication/binlogsyncer.go#L371
-
+    fn start_binlog_sync2(&mut self, pos: Position) -> MyResult<()> {
         self._prepare_sync_pos(pos)?;
-        self._start_dump_stream()?;
-        Ok(())
-
-
-        // TODO: register slave
-        // TODO:
-
-
-
-        // TODO: start dump stream https://github.com/siddontang/go-mysql/blob/c6ab05a85eb86dc51a27ceed6d2f366a32874a24/replication/binlogsyncer.go#L375
-
-        // let _ = self
-        //     .conn
-        //     .write_command_data(Command::COM_STMT_CLOSE, &stmt_id[..]);
-
+        self._start_dump_stream()
     }
 
     fn _prepare_sync_pos(&mut self, pos: Position) -> MyResult<()> {
@@ -3278,4 +3270,8 @@ pub struct Position {
     pub pos: u32,
     pub name: String,
     pub server_id: u32,
+}
+
+struct BinlogReader {
+    stream: ConnStream,
 }

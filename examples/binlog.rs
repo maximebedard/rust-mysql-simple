@@ -6,8 +6,10 @@ fn main() {
   match Pool::new("mysql://root@192.168.64.2:3306").unwrap().get_conn() {
     Ok(mut conn) => {
       println!("success");
-      let result = conn.as_mut().start_binlog_sync().unwrap();
+      let cccc = conn.as_mut();
+      let result = cccc.start_binlog_sync().unwrap();
       loop {
+        // cccc.ping();
         std::thread::sleep(std::time::Duration::from_millis(10));
       }
       println!("wierouweoiruw");
