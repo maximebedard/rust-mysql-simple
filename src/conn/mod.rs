@@ -1530,10 +1530,11 @@ impl Conn {
     }
 
     fn _get_master_position(&mut self) -> MyResult<Position> {
-        // self.first("SHOW MASTER STATUS").and_then(|result| {
+        self.first("show master status").and_then(|result| {
+            let (file, position, _, _, _) : (String, u32, String, String, String) = from_row(result.unwrap());
 
-        // })?
-        Ok(Position { pos: 123, name: "".to_owned(), server_id: 1 })
+            Ok(Position { pos: position, name: file, server_id: 1})
+        })
     }
 
     pub fn start_binlog_sync2(&mut self, pos: Position) -> MyResult<()> {
@@ -1590,14 +1591,13 @@ impl Conn {
     }
 
     fn _disable_checksum(&mut self) -> MyResult<()> {
-        // TODO
-        // self.first(&"SHOW GLOBAL VARIABLES LIKE 'BINLOG_CHECKSUM'").and_then(|result| {
-        //     match result {
-        //         Some("CRC32") | Some("NONE") => panic!("WERWEr"),
-        //         None => panic!("weifweof"),
-        //     }
-        // })?
-        Ok(())
+        match self.get_system_var("binlog_checksum").map(from_value::<String>).as_ref().map_or("NONE", String::as_ref) {
+            "NONE" => Ok(()),
+            _ => {
+                self.query("set global binlog_checksum='NONE'")?;
+                Ok(())
+            },
+        }
     }
 
     fn _enable_semi_sync(&mut self) -> MyResult<()> {
