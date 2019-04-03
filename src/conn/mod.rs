@@ -1525,10 +1525,22 @@ impl Conn {
     }
 
     pub fn start_binlog_sync(&mut self) -> MyResult<()> {
+        let pos = self._get_master_position()?;
+        self.start_binlog_sync2(pos)
+    }
+
+    fn _get_master_position(&mut self) -> MyResult<Position> {
+        // self.first("SHOW MASTER STATUS").and_then(|result| {
+
+        // })?
+        Ok(Position { pos: 123, name: "".to_owned(), server_id: 1 })
+    }
+
+    pub fn start_binlog_sync2(&mut self, pos: Position) -> MyResult<()> {
 
         // TODO: prepare sync position https://github.com/siddontang/go-mysql/blob/c6ab05a85eb86dc51a27ceed6d2f366a32874a24/replication/binlogsyncer.go#L371
 
-        self._prepare_sync_pos()?;
+        self._prepare_sync_pos(pos)?;
         self._start_dump_stream()?;
         Ok(())
 
@@ -1546,25 +1558,45 @@ impl Conn {
 
     }
 
-    fn _prepare_sync_pos(&mut self) -> MyResult<()> {
+    fn _prepare_sync_pos(&mut self, pos: Position) -> MyResult<()> {
         // always start from position 4
         // if pos.Pos < 4 {
         //     pos.Pos = 4
         // }
 
-        self._prepare_binlog_stream()?;
-        self._write_binlog_dump_command()?;
+        self._prepare_binlog_stream(pos.clone())?;
+        self._write_binlog_dump_command(pos)?;
         Ok(())
     }
 
-    fn _prepare_binlog_stream(&mut self) -> MyResult<()> {
-        // self._register_slave()?;
+    fn _prepare_binlog_stream(&mut self, pos: Position) -> MyResult<()> {
+        self._register_slave(pos)?;
         // self._enable_semi_sync()?;
 
+
+        // match foo() {
+        //     Ok(value) => {}
+        //     Err(err) => { println!("an error occured {}")}
+        // }
+
         Ok(())
     }
 
-    fn _register_slave(&mut self) -> MyResult<()> {
+    fn _register_slave(&mut self, pos: Position) -> MyResult<()> {
+        self._disable_checksum()?;
+        self._write_register_slave_command(pos)?;
+        self.read_packet()?;
+        Ok(())
+    }
+
+    fn _disable_checksum(&mut self) -> MyResult<()> {
+        // TODO
+        // self.first(&"SHOW GLOBAL VARIABLES LIKE 'BINLOG_CHECKSUM'").and_then(|result| {
+        //     match result {
+        //         Some("CRC32") | Some("NONE") => panic!("WERWEr"),
+        //         None => panic!("weifweof"),
+        //     }
+        // })?
         Ok(())
     }
 
@@ -1572,9 +1604,44 @@ impl Conn {
         Ok(())
     }
 
-    fn _write_binlog_dump_command(&mut self) -> MyResult<()> {
-        let _ = self.write_command_data(Command::COM_BINLOG_DUMP, &[]);
-        Ok(())
+    fn _write_register_slave_command(&mut self, pos: Position) -> MyResult<()> {
+        match hostname::get_hostname() {
+            Some(local_hostname) => {
+                let user = self.opts.get_user().unwrap();
+                let password = self.opts.get_pass().unwrap_or_default();
+                let mut buf = vec![0; 4+1+4+1+local_hostname.len()+1+user.len()+1+password.len()+2+4+4];
+
+                {
+                    let mut writer = &mut buf[..];
+                    writer.write_u32::<LE>(pos.server_id)?;
+                    writer.write_u8(local_hostname.len() as u8)?;
+                    writer.write_all(local_hostname.as_bytes())?;
+                    writer.write_u8(user.len() as u8)?;
+                    writer.write_all(user.as_bytes())?;
+                    writer.write_u8(password.len() as u8)?;
+                    writer.write_all(password.as_bytes())?;
+                    writer.write_u16::<LE>(self.opts.get_tcp_port())?;
+                    writer.write_u32::<LE>(0u32)?;
+                    writer.write_u32::<LE>(0u32)?;
+                }
+
+                self.write_command_data(Command::COM_REGISTER_SLAVE, &buf)
+            }
+            None => panic!("eirwueyriwuer")
+        }
+    }
+
+    fn _write_binlog_dump_command(&mut self, pos: Position) -> MyResult<()> {
+        let mut buf = vec![0; 4 + 4 + 2 + 4 + pos.name.len() + 1];
+        {
+            let mut writer = &mut buf[..];
+            writer.write_u32::<LE>(pos.pos)?;
+            writer.write_u16::<LE>(0u16)?;
+            writer.write_u32::<LE>(pos.server_id)?;
+            writer.write_all(pos.name.as_bytes())?;
+        }
+
+        self.write_command_data(Command::COM_BINLOG_DUMP, &buf)
     }
 
     fn _start_dump_stream(&mut self) -> MyResult<()> {
@@ -3204,4 +3271,11 @@ mod test {
             });
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct Position {
+    pub pos: u32,
+    pub name: String,
+    pub server_id: u32,
 }

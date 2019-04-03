@@ -130,6 +130,8 @@
 #[cfg(feature = "nightly")]
 extern crate test;
 
+extern crate hostname;
+
 use mysql_common as myc;
 pub extern crate serde;
 pub extern crate serde_json;
@@ -150,6 +152,8 @@ mod conn;
 pub mod error;
 mod io;
 mod packet;
+
+pub use crate::conn::Position;
 
 #[doc(inline)]
 pub use crate::myc::constants as consts;
