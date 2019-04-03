@@ -1524,6 +1524,63 @@ impl Conn {
         }
     }
 
+    pub fn start_binlog_sync(&mut self) -> MyResult<()> {
+
+        // TODO: prepare sync position https://github.com/siddontang/go-mysql/blob/c6ab05a85eb86dc51a27ceed6d2f366a32874a24/replication/binlogsyncer.go#L371
+
+        self._prepare_sync_pos()?;
+        self._start_dump_stream()?;
+        Ok(())
+
+
+        // TODO: register slave
+        // TODO:
+
+
+
+        // TODO: start dump stream https://github.com/siddontang/go-mysql/blob/c6ab05a85eb86dc51a27ceed6d2f366a32874a24/replication/binlogsyncer.go#L375
+
+        // let _ = self
+        //     .conn
+        //     .write_command_data(Command::COM_STMT_CLOSE, &stmt_id[..]);
+
+    }
+
+    fn _prepare_sync_pos(&mut self) -> MyResult<()> {
+        // always start from position 4
+        // if pos.Pos < 4 {
+        //     pos.Pos = 4
+        // }
+
+        self._prepare_binlog_stream()?;
+        self._write_binlog_dump_command()?;
+        Ok(())
+    }
+
+    fn _prepare_binlog_stream(&mut self) -> MyResult<()> {
+        // self._register_slave()?;
+        // self._enable_semi_sync()?;
+
+        Ok(())
+    }
+
+    fn _register_slave(&mut self) -> MyResult<()> {
+        Ok(())
+    }
+
+    fn _enable_semi_sync(&mut self) -> MyResult<()> {
+        Ok(())
+    }
+
+    fn _write_binlog_dump_command(&mut self) -> MyResult<()> {
+        let _ = self.write_command_data(Command::COM_BINLOG_DUMP, &[]);
+        Ok(())
+    }
+
+    fn _start_dump_stream(&mut self) -> MyResult<()> {
+        Ok(())
+    }
+
     /// Starts new transaction with provided options.
     /// `readonly` is only available since MySQL 5.6.5.
     pub fn start_transaction<'a>(
