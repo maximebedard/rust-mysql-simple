@@ -55,6 +55,8 @@ pub struct Opts {
     pass: Option<String>,
     /// Database name (defaults to `None`).
     db_name: Option<String>,
+    /// Server id used during replication/streaming (defaults to `1`)
+    server_id: Option<u32>,
 
     /// The timeout for each attempt to read from the server.
     read_timeout: Option<Duration>,
@@ -184,6 +186,11 @@ impl Opts {
     /// Database name (defaults to `None`).
     pub fn get_db_name(&self) -> Option<&str> {
         self.db_name.as_ref().map(|x| &**x)
+    }
+
+    // Server id used during binlog streaming/replication (defaults to `1`)
+    pub fn get_server_id(&self) -> u32 {
+        self.server_id.unwrap_or(1)
     }
 
     /// The timeout for each attempt to write to the server.
@@ -329,6 +336,7 @@ impl Default for Opts {
             user: None,
             pass: None,
             db_name: None,
+            server_id: Some(1),
             read_timeout: None,
             write_timeout: None,
             prefer_socket: true,

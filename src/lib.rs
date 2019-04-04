@@ -153,8 +153,6 @@ pub mod error;
 mod io;
 mod packet;
 
-pub use crate::conn::Position;
-
 #[doc(inline)]
 pub use crate::myc::constants as consts;
 

@@ -1525,53 +1525,21 @@ impl Conn {
     }
 
     pub fn binlog_reader(mut self) -> MyResult<BinlogReader> {
-        let pos = self._get_master_position()?;
-        self.binlog_reader_from_position(pos)?;
+        let (file_name, position) = self.first("show master status").and_then(|result| {
+            let (file_name, position, _, _, _) : (String, u32, String, String, String) = from_row(result.unwrap());
+            Ok((file_name, position))
+        })?;
+
+        self.binlog_reader_from_position(file_name, position)
+    }
+
+    pub fn binlog_reader_from_position(mut self, file_name: String, position: u32) -> MyResult<BinlogReader> {
+        self._disable_checksum()?;
+        self._write_register_slave_command()?;
+        self.read_packet()?;
+        self._write_binlog_dump_command(file_name, position)?;
 
         Ok(BinlogReader::new(Box::new(move || { self.read_packet() })))
-    }
-
-    fn _get_master_position(&mut self) -> MyResult<Position> {
-        self.first("show master status").and_then(|result| {
-            let (file, position, _, _, _) : (String, u32, String, String, String) = from_row(result.unwrap());
-            Ok(Position { pos: position, name: file, server_id: 1})
-        })
-    }
-
-    pub fn binlog_reader_from_position(&mut self, pos: Position) -> MyResult<()> {
-        self._prepare_sync_pos(pos)?;
-        self._start_dump_stream()
-    }
-
-    fn _prepare_sync_pos(&mut self, pos: Position) -> MyResult<()> {
-        // TODO: always start from position 4
-        // if pos.Pos < 4 {
-        //     pos.Pos = 4
-        // }
-
-        self._prepare_binlog_stream(pos.clone())?;
-        self._write_binlog_dump_command(pos)?;
-        Ok(())
-    }
-
-    fn _prepare_binlog_stream(&mut self, pos: Position) -> MyResult<()> {
-        self._register_slave(pos)?;
-        // self._enable_semi_sync()?;
-
-
-        // match foo() {
-        //     Ok(value) => {}
-        //     Err(err) => { println!("an error occured {}")}
-        // }
-
-        Ok(())
-    }
-
-    fn _register_slave(&mut self, pos: Position) -> MyResult<()> {
-        self._disable_checksum()?;
-        self._write_register_slave_command(pos)?;
-        self.read_packet()?;
-        Ok(())
     }
 
     fn _disable_checksum(&mut self) -> MyResult<()> {
@@ -1584,20 +1552,17 @@ impl Conn {
         }
     }
 
-    fn _enable_semi_sync(&mut self) -> MyResult<()> {
-        Ok(())
-    }
-
-    fn _write_register_slave_command(&mut self, pos: Position) -> MyResult<()> {
+    fn _write_register_slave_command(&mut self) -> MyResult<()> {
         match hostname::get_hostname() {
             Some(local_hostname) => {
                 let user = self.opts.get_user().unwrap();
                 let password = self.opts.get_pass().unwrap_or_default();
+                let server_id = self.opts.get_server_id();
                 let mut buf = vec![0; 4+1+4+1+local_hostname.len()+1+user.len()+1+password.len()+2+4+4];
 
                 {
                     let mut writer = &mut buf[..];
-                    writer.write_u32::<LE>(pos.server_id)?;
+                    writer.write_u32::<LE>(server_id)?;
                     writer.write_u8(local_hostname.len() as u8)?;
                     writer.write_all(local_hostname.as_bytes())?;
                     writer.write_u8(user.len() as u8)?;
@@ -1615,21 +1580,18 @@ impl Conn {
         }
     }
 
-    fn _write_binlog_dump_command(&mut self, pos: Position) -> MyResult<()> {
-        let mut buf = vec![0; 4 + 4 + 2 + 4 + pos.name.len() + 1];
+    fn _write_binlog_dump_command(&mut self, file_name: String, position: u32) -> MyResult<()> {
+        let server_id = self.opts.get_server_id();
+        let mut buf = vec![0; 4 + 4 + 2 + 4 + file_name.len() + 1];
         {
             let mut writer = &mut buf[..];
-            writer.write_u32::<LE>(pos.pos)?;
+            writer.write_u32::<LE>(position)?;
             writer.write_u16::<LE>(0u16)?;
-            writer.write_u32::<LE>(pos.server_id)?;
-            writer.write_all(pos.name.as_bytes())?;
+            writer.write_u32::<LE>(server_id)?;
+            writer.write_all(file_name.as_bytes())?;
         }
 
         self.write_command_data(Command::COM_BINLOG_DUMP, &buf)
-    }
-
-    fn _start_dump_stream(&mut self) -> MyResult<()> {
-        Ok(())
     }
 
     /// Starts new transaction with provided options.
@@ -3283,12 +3245,4 @@ impl io::Read for BinlogReader {
         buf.copy_from_slice(self.buffer.drain(..buf.len()).collect::<Vec<u8>>().as_slice());
         Ok(buf.len())
     }
-}
-
-
-#[derive(Debug, Clone)]
-pub struct Position {
-    pub pos: u32,
-    pub name: String,
-    pub server_id: u32,
 }
