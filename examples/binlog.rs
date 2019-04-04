@@ -1,18 +1,21 @@
 extern crate mysql;
 
 use mysql::{Pool};
+use std::io::Read;
 
 fn main() {
   match Pool::new("mysql://root@192.168.64.2:3306").unwrap().get_conn() {
-    Ok(mut conn) => {
+    Ok(conn) => {
       println!("success");
-      let cccc = conn.as_mut();
-      let result = cccc.start_binlog_sync().unwrap();
+      let mut reader = conn.unwrap().binlog_reader().unwrap();
       loop {
-        // cccc.ping();
+        let mut buffer = vec![0; 30];
+        match reader.read(&mut buffer) {
+          Ok(size) => println!("{:?}, size={:?}", &buffer[..size], buffer.len()),
+          Err(err) => println!("error reading from stream {:?}", err),
+        }
         std::thread::sleep(std::time::Duration::from_millis(10));
       }
-      println!("wierouweoiruw");
     }
     Err(err) => {
       println!("unable to connect to mysql: {}", err);

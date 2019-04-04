@@ -624,15 +624,6 @@ impl ConnStream {
     }
 }
 
-// impl io::Read for ConnStream {
-//     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-//         match self {
-//             ConnStream::Plain(s) => s.read(buf),
-//             ConnStream::Compressed(s) => s.read(buf),
-//         }
-//     }
-// }
-
 /***
  *     .d8888b.
  *    d88P  Y88b
@@ -1533,11 +1524,11 @@ impl Conn {
         }
     }
 
-    pub fn start_binlog_sync(&mut self) -> MyResult<()> {
+    pub fn binlog_reader(mut self) -> MyResult<BinlogReader> {
         let pos = self._get_master_position()?;
-        self.start_binlog_sync2(pos)?;
-        Ok(())
-        // Ok(self.stream.unwrap())
+        self.binlog_reader_from_position(pos)?;
+
+        Ok(BinlogReader::new(Box::new(move || { self.read_packet() })))
     }
 
     fn _get_master_position(&mut self) -> MyResult<Position> {
@@ -1547,13 +1538,13 @@ impl Conn {
         })
     }
 
-    fn start_binlog_sync2(&mut self, pos: Position) -> MyResult<()> {
+    pub fn binlog_reader_from_position(&mut self, pos: Position) -> MyResult<()> {
         self._prepare_sync_pos(pos)?;
         self._start_dump_stream()
     }
 
     fn _prepare_sync_pos(&mut self, pos: Position) -> MyResult<()> {
-        // always start from position 4
+        // TODO: always start from position 4
         // if pos.Pos < 4 {
         //     pos.Pos = 4
         // }
@@ -3266,13 +3257,38 @@ mod test {
     }
 }
 
+pub struct BinlogReader {
+   f: Box<(FnMut() -> MyResult<Vec<u8>>)>,
+   buffer: Vec<u8>,
+}
+
+impl BinlogReader {
+    fn new(f: Box<(FnMut() -> MyResult<Vec<u8>>)>) -> Self {
+        Self { f, buffer: Vec::new() }
+    }
+}
+
+impl io::Read for BinlogReader {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        while self.buffer.len() < buf.len() {
+            match (self.f)() {
+                Ok(ref mut data) => {
+                    self.buffer.append(data);
+                }
+                Err(IoError(err)) => return Err(err),
+                _ => return Err(io::Error::new(io::ErrorKind::Other, "oh no!")),
+            }
+        }
+
+        buf.copy_from_slice(self.buffer.drain(..buf.len()).collect::<Vec<u8>>().as_slice());
+        Ok(buf.len())
+    }
+}
+
+
 #[derive(Debug, Clone)]
 pub struct Position {
     pub pos: u32,
     pub name: String,
     pub server_id: u32,
-}
-
-struct BinlogReader {
-    stream: ConnStream,
 }
