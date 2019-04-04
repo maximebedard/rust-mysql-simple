@@ -624,14 +624,14 @@ impl ConnStream {
     }
 }
 
-impl io::Read for ConnStream {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        match self {
-            ConnStream::Plain(s) => s.read(buf),
-            ConnStream::Compressed(s) => s.read(buf),
-        }
-    }
-}
+// impl io::Read for ConnStream {
+//     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+//         match self {
+//             ConnStream::Plain(s) => s.read(buf),
+//             ConnStream::Compressed(s) => s.read(buf),
+//         }
+//     }
+// }
 
 /***
  *     .d8888b.
@@ -1533,10 +1533,11 @@ impl Conn {
         }
     }
 
-    pub fn start_binlog_sync<T: io::Read>(&mut self) -> MyResult<T> {
+    pub fn start_binlog_sync(&mut self) -> MyResult<()> {
         let pos = self._get_master_position()?;
         self.start_binlog_sync2(pos)?;
-        Ok(self.stream.unwrap())
+        Ok(())
+        // Ok(self.stream.unwrap())
     }
 
     fn _get_master_position(&mut self) -> MyResult<Position> {
