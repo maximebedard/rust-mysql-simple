@@ -1524,7 +1524,7 @@ impl Conn {
         }
     }
 
-    pub fn binlog_reader(mut self) -> MyResult<BinlogReader> {
+    pub fn binlog_reader(mut self) -> MyResult<Box<(FnMut() -> MyResult<Vec<u8>>)>> {
         let (file_name, position) = self.first("show master status").and_then(|result| {
             let (file_name, position, _, _, _) : (String, u32, String, String, String) = from_row(result.unwrap());
             Ok((file_name, position))
@@ -1533,13 +1533,13 @@ impl Conn {
         self.binlog_reader_from_position(file_name, position)
     }
 
-    pub fn binlog_reader_from_position(mut self, file_name: String, position: u32) -> MyResult<BinlogReader> {
+    pub fn binlog_reader_from_position(mut self, file_name: String, position: u32) -> MyResult<Box<(FnMut() -> MyResult<Vec<u8>>)>> {
         self._disable_checksum()?;
         self._write_register_slave_command()?;
         self.read_packet()?;
         self._write_binlog_dump_command(file_name, position)?;
 
-        Ok(BinlogReader::new(Box::new(move || { self.read_packet() })))
+        Ok(Box::new(move || { self.read_packet() }))
     }
 
     fn _disable_checksum(&mut self) -> MyResult<()> {
@@ -3219,30 +3219,36 @@ mod test {
     }
 }
 
-pub struct BinlogReader {
-   f: Box<(FnMut() -> MyResult<Vec<u8>>)>,
-   buffer: Vec<u8>,
-}
+// type BinlogReader = ;
 
-impl BinlogReader {
-    fn new(f: Box<(FnMut() -> MyResult<Vec<u8>>)>) -> Self {
-        Self { f, buffer: Vec::new() }
-    }
-}
+// pub struct BinlogReader {
+//     pub f:
+// }
 
-impl io::Read for BinlogReader {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        while self.buffer.len() < buf.len() {
-            match (self.f)() {
-                Ok(ref mut data) => {
-                    self.buffer.append(data);
-                }
-                Err(IoError(err)) => return Err(err),
-                _ => return Err(io::Error::new(io::ErrorKind::Other, "oh no!")),
-            }
-        }
+// pub struct BinlogReader {
+//    f: Box<(FnMut() -> MyResult<Vec<u8>>)>,
+//    buffer: Vec<u8>,
+// }
 
-        buf.copy_from_slice(self.buffer.drain(..buf.len()).collect::<Vec<u8>>().as_slice());
-        Ok(buf.len())
-    }
-}
+// impl BinlogReader {
+//     fn new(f: Box<(FnMut() -> MyResult<Vec<u8>>)>) -> Self {
+//         Self { f, buffer: Vec::new() }
+//     }
+// }
+
+// impl io::Read for BinlogReader {
+//     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+//         while self.buffer.len() < buf.len() {
+//             match (self.f)() {
+//                 Ok(ref mut data) => {
+//                     self.buffer.append(data);
+//                 }
+//                 Err(IoError(err)) => return Err(err),
+//                 _ => return Err(io::Error::new(io::ErrorKind::Other, "oh no!")),
+//             }
+//         }
+
+//         buf.copy_from_slice(self.buffer.drain(..buf.len()).collect::<Vec<u8>>().as_slice());
+//         Ok(buf.len())
+//     }
+// }
