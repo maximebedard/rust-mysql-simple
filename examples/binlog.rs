@@ -1,8 +1,10 @@
 extern crate mysql;
 
 use mysql::{Pool};
-use std::io::Cursor;
+use std::io::{Cursor, Result};
 use byteorder::{LittleEndian, BigEndian, ReadBytesExt};
+// use std::iter::Iterator;
+// use std::io::Read;
 
 fn main() {
   match Pool::new("mysql://root@192.168.64.2:3306").unwrap().get_conn() {
@@ -12,7 +14,7 @@ fn main() {
       loop {
         match reader() {
           Ok(data) => {
-            // println!("{:?}\r\n", packet);
+            let event = Event::try_from(data);
           }
           Err(err) => println!("error reading from stream {:?}", err),
         }
@@ -26,43 +28,52 @@ fn main() {
   }
 }
 
-impl Parser {
-    pub fn new(reader: T) -> Parser<T> {
-        Parser{
-            reader: reader,
-            field_types: Vec::with_capacity(100)
-        }
-    }
+struct Header {
+  timestamp: i32,
+  type_code: i8,
+  server_id: i32,
+  event_length: i32,
+  next_position: i32,
+  flags: i16
+}
 
-    pub fn get_mut(&mut self) -> &mut T {
-        &mut self.reader
-    }
+struct Data {
 
-    fn skip(&mut self, n: u64) -> Result<u64> {
-        std::io::copy(&mut self.reader.by_ref().take(n), &mut std::io::sink())
-    }
+}
 
-    pub fn read_event_header(&mut self) -> Result<EventHeader> {
-        let mut data = [0; 19];
-        self.reader.read(&mut data)?;
+struct Event {
+  header: Header,
+  data: Data,
+}
 
-        let mut cursor = Cursor::new(&data);
+impl Event {
+  fn try_from(buffer: Vec<u8>) -> Result<Event> {
+    let mut cursor = Cursor::new(buffer);
 
-        let timestamp = cursor.read_i32::<LittleEndian>()?;
-        let type_code = cursor.read_i8()?;
-        let server_id = cursor.read_i32::<LittleEndian>()?;
-        let event_len = cursor.read_i32::<LittleEndian>()?;
-        let next_pos = cursor.read_i32::<LittleEndian>()?;
-        let flags = cursor.read_i16::<LittleEndian>()?;
+    // skip magic bytes;
+    // std::io::copy(&mut cursor.take(4), &mut std::io::sink());
 
-        Ok(EventHeader::new(
-            timestamp,
-            type_code,
-            server_id,
-            event_len,
-            next_pos,
-            flags
-        ))
-    }
+    let timestamp = cursor.read_i32::<LittleEndian>()?;
+    let type_code = cursor.read_i8()?;
+    let server_id = cursor.read_i32::<LittleEndian>()?;
+    let event_length = cursor.read_i32::<LittleEndian>()?;
+    let next_position = cursor.read_i32::<LittleEndian>()?;
+    let flags = cursor.read_i16::<LittleEndian>()?;
+
+    let event = Event {
+      header: Header {
+        timestamp,
+        type_code,
+        server_id,
+        event_length,
+        next_position,
+        flags,
+      },
+      data: Data {
+        binlog_version: 0,
+      },
+    };
+
+    Ok(event)
   }
 }
