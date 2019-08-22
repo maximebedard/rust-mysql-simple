@@ -146,6 +146,8 @@ pub use crate::myc::time;
 /// Reexport of `uuid` crate.
 pub use crate::myc::uuid;
 
+pub use crate::myc::binlog::parse_event;
+
 // Until `macro_reexport` stabilisation.
 
 mod conn;

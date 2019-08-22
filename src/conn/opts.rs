@@ -336,7 +336,7 @@ impl Default for Opts {
             user: None,
             pass: None,
             db_name: None,
-            server_id: Some(1),
+            server_id: Some(24),
             read_timeout: None,
             write_timeout: None,
             prefer_socket: true,

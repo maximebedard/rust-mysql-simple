@@ -1536,23 +1536,27 @@ impl Conn {
     pub fn binlog_reader_from_position(mut self, file_name: String, position: u32) -> MyResult<Box<(FnMut() -> MyResult<Vec<u8>>)>> {
         self._disable_checksum()?;
         self._write_register_slave_command()?;
-        self.read_packet()?;
         self._write_binlog_dump_command(file_name, position)?;
 
         Ok(Box::new(move || { self.read_packet() }))
     }
 
     fn _disable_checksum(&mut self) -> MyResult<()> {
-        match self.get_system_var("binlog_checksum").map(from_value::<String>).as_ref().map_or("NONE", String::as_ref) {
+        let checksum = self.get_system_var("binlog_checksum")
+            .map(from_value::<String>)
+            .unwrap_or("NONE".to_owned());
+
+        match checksum.as_ref() {
             "NONE" => Ok(()),
-            _ => {
-                self.query("set global binlog_checksum='NONE'")?;
+            "CRC32" => {
+                self.query("SET @master_binlog_checksum='NONE'")?;
                 Ok(())
-            },
+            }
+            _ => Err(DriverError(UnexpectedPacket)),
         }
     }
 
-    fn _write_register_slave_command(&mut self) -> MyResult<()> {
+    fn _write_register_slave_command(&mut self) -> MyResult<Vec<Column>> {
         match hostname::get_hostname() {
             Some(local_hostname) => {
                 let user = self.opts.get_user().unwrap();
@@ -1574,15 +1578,17 @@ impl Conn {
                     writer.write_u32::<LE>(0u32)?;
                 }
 
-                self.write_command_data(Command::COM_REGISTER_SLAVE, &buf)
+                self.write_command_data(Command::COM_REGISTER_SLAVE, &buf)?;
+                self.handle_result_set()
             }
-            None => panic!("eirwueyriwuer")
+            None => Err(DriverError(UnexpectedPacket)),
         }
     }
 
-    fn _write_binlog_dump_command(&mut self, file_name: String, position: u32) -> MyResult<()> {
+    fn _write_binlog_dump_command(&mut self, file_name: String, position: u32) -> MyResult<Vec<Column>> {
         let server_id = self.opts.get_server_id();
         let mut buf = vec![0; 4 + 4 + 2 + 4 + file_name.len() + 1];
+
         {
             let mut writer = &mut buf[..];
             writer.write_u32::<LE>(position)?;
@@ -1591,7 +1597,8 @@ impl Conn {
             writer.write_all(file_name.as_bytes())?;
         }
 
-        self.write_command_data(Command::COM_BINLOG_DUMP, &buf)
+        self.write_command_data(Command::COM_BINLOG_DUMP, &buf)?;
+        self.handle_result_set()
     }
 
     /// Starts new transaction with provided options.
